@@ -5,7 +5,7 @@ spring:
   elasticsearch:
     uris: ${ES_URIS:http://85.137.245.41:9200}
     username: ${ES_USERNAME:elastic}
-    password: ${ES_PASSWORD:Elastic_3c7z3p}
+    password: ${ES_PASSWORD}
 
   datasource:
     url: jdbc:mysql://127.0.0.1:3306/schoolforum?characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
@@ -34,7 +34,7 @@ spring:
     host: smtp.qq.com
     port: 587
     username: ${DEV_MAIL_USERNAME:3342113181@qq.com}
-    password: ${DEV_MAIL_PASSWORD:knnxihikcucxcija}
+    password: ${DEV_MAIL_PASSWORD}
     properties:
       mail:
         smtp:
@@ -46,7 +46,7 @@ spring:
 oauth:
   github:
     client-id: ${DEV_GITHUB_CLIENT_ID:Ov23ctui8olAxrt6hQeX}
-    client-secret: ${DEV_GITHUB_CLIENT_SECRET:66ebfa9ddbac39bc4e4aef6747a60c0a82d6a8b0}
+    client-secret: ${DEV_GITHUB_CLIENT_SECRET}
     redirect-uri: http://localhost:5173/callback
     disable-ssl: true
 
