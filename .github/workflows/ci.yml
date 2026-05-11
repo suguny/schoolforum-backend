@@ -68,9 +68,7 @@ jobs:
 
       - name: Save image as tar
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        run: |
-          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
-          docker save -o image.tar "$IMAGE_TAG"
+        run: docker save -o image.tar ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
       - name: Push Docker image
         uses: docker/build-push-action@v6
@@ -113,7 +111,7 @@ jobs:
             cd /opt/schoolforum
             docker load -i image.tar
             rm -f image.tar
-            docker compose up -d --remove-orphans
+            docker compose up -d --no-pull --remove-orphans
             docker image prune -f
 
       - name: Release
