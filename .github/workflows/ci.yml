@@ -1,4 +1,4 @@
-name: Build & Deploy
+name: Build & Release
 
 on:
   push:
@@ -56,21 +56,7 @@ jobs:
             type=ref,event=tag
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Save image as tar
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        run: docker save -o image.tar ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-
-      - name: Push Docker image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -79,40 +65,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Upload docker-compose.yml
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          source: docker-compose.yml
-          target: /opt/schoolforum/
-
-      - name: Upload image to server
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          source: image.tar
-          target: /opt/schoolforum/
-
-      - name: Deploy via SSH
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          password: ${{ secrets.SSH_PASSWORD }}
-          script: |
-            cd /opt/schoolforum
-            docker load -i image.tar
-            rm -f image.tar
-            docker compose up -d --no-pull --remove-orphans
-            docker image prune -f
 
       - name: Release
         if: startsWith(github.ref, 'refs/tags/')
