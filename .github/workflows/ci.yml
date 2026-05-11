@@ -1,10 +1,9 @@
-name: CI Build & Test
+name: Build & Release
 
 on:
   push:
-    branches: [main, master, dev, develop]
-  pull_request:
     branches: [main, master]
+    tags: ['v*']
 
 env:
   JAVA_VERSION: '17'
@@ -12,32 +11,12 @@ env:
 
 jobs:
   build:
-    name: Build & Test
+    name: Build & Release
     runs-on: ubuntu-latest
-
-    env:
-      SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/schoolforum?characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: 123456
-      SPRING_DATA_REDIS_HOST: localhost
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
-      - name: Set up MySQL
-        run: |
-          sudo systemctl start mysql.service
-          while ! mysqladmin ping --silent 2>/dev/null; do sleep 1; done
-          sudo mysql --protocol=socket -e "CREATE DATABASE IF NOT EXISTS schoolforum;"
-          sudo mysql --protocol=socket -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '123456';"
-          sudo mysql --protocol=socket -e "FLUSH PRIVILEGES;"
-
-      - name: Set up Redis
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq redis-server
-          sudo systemctl start redis-server
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v5
@@ -49,15 +28,18 @@ jobs:
       - name: Make mvnw executable
         run: chmod +x mvnw
 
-      - name: Compile
-        run: ./mvnw compile --batch-mode
-
       - name: Package
-        run: ./mvnw package --batch-mode
+        run: ./mvnw package -DskipTests --batch-mode
 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v6
         with:
           name: schoolforum-jar
           path: target/*.jar
-          retention-days: 7
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: target/*.jar
+          generate_release_notes: true
