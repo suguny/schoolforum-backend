@@ -1,6 +1,6 @@
 services:
   schoolforum:
-    image: ghcr.io/sugeny/schoolforum-backend:latest
+    image: ghcr.io/sugeny/schoolforum:latest
     container_name: schoolforum
     restart: always
     network_mode: host
