@@ -2,10 +2,15 @@ server:
   port: 8085
 
 spring:
+  elasticsearch:
+    uris: ${ES_URIS:http://85.137.245.41:9200}
+    username: ${ES_USERNAME:elastic}
+    password: ${ES_PASSWORD:Elastic_3c7z3p}
+
   datasource:
-    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/schoolforum?characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    url: ${DB_URL:jdbc:mysql://85.137.245.41:3306/schoolforum?characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:}
+    password: ${DB_PASSWORD:6saSHhDpaFQQFMPW}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       minimum-idle: 10
@@ -19,17 +24,17 @@ spring:
 
   data:
     redis:
-      host: ${REDIS_HOST:127.0.0.1}
+      host: ${REDIS_HOST:85.137.245.41}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      password: ${REDIS_PASSWORD:redis_EjbJwZ}
       database: 0
       timeout: 10s
 
   mail:
     host: ${MAIL_HOST:smtp.qq.com}
     port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
+    username: ${MAIL_USERNAME:3342113181@qq.com}
+    password: ${MAIL_PASSWORD:knnxihikcucxcija}
     properties:
       mail:
         smtp:
@@ -44,8 +49,14 @@ oauth:
     client-secret: ${GITHUB_CLIENT_SECRET:}
     redirect-uri: ${GITHUB_REDIRECT_URI:http://localhost:8085/oauth/callback/github}
 
+springdoc:
+  swagger-ui:
+    try-it-out-enabled: false
+
 logging:
   level:
     com.example.schoolforum: info
     org.springframework.web: warn
     org.springframework.boot: warn
+  file:
+    path: ${LOG_PATH:/var/log/schoolforum}

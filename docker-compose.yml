@@ -1,0 +1,13 @@
+services:
+  schoolforum:
+    image: ghcr.io/sugeny/schoolforum-backend:latest
+    container_name: schoolforum
+    restart: always
+    ports:
+      - "8085:8085"
+    environment:
+      - TZ=Asia/Shanghai
+      - SPRING_PROFILES_ACTIVE=prod
+    volumes:
+      - /var/log/schoolforum:/var/log/schoolforum
+    network_mode: host

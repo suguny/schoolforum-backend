@@ -5,10 +5,6 @@ spring:
     active: dev
   jackson:
     default-property-inclusion: non_null
-  elasticsearch:
-    uris: http://85.137.245.41:9200
-    username: elastic
-    password: Elastic_3c7z3p
 
 server:
   port: 8085
@@ -26,7 +22,7 @@ sa-token:
   is-log: false
   is-read-header: true
   is-read-cookie: true
-  jwt-secret-key: schoolforum-sa-token-jwt-secret-key-2026
+  jwt-secret-key: ${JWT_SECRET_KEY:schoolforum-sa-token-jwt-secret-key-2026}
 
 springdoc:
   swagger-ui:
@@ -44,7 +40,7 @@ hot-rank:
 
 file:
   upload:
-    avatar-path: ./uploads/avatars/
-    post-image-path: ./uploads/post-images/
+    avatar-path: ${UPLOAD_AVATAR_PATH:./uploads/avatars/}
+    post-image-path: ${UPLOAD_POST_IMAGE_PATH:./uploads/post-images/}
     max-size: 5MB
     allowed-types: image/jpeg,image/png,image/gif,image/webp

@@ -1,10 +1,16 @@
 server:
   port: 8085
+
 spring:
+  elasticsearch:
+    uris: ${ES_URIS:http://85.137.245.41:9200}
+    username: ${ES_USERNAME:elastic}
+    password: ${ES_PASSWORD:Elastic_3c7z3p}
+
   datasource:
     url: jdbc:mysql://127.0.0.1:3306/schoolforum?characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: root
-    password: 123456
+    username: ${DEV_DB_USERNAME:root}
+    password: ${DEV_DB_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       minimum-idle: 5
@@ -27,8 +33,8 @@ spring:
   mail:
     host: smtp.qq.com
     port: 587
-    username: 3342113181@qq.com
-    password: knnxihikcucxcija
+    username: ${DEV_MAIL_USERNAME:3342113181@qq.com}
+    password: ${DEV_MAIL_PASSWORD:knnxihikcucxcija}
     properties:
       mail:
         smtp:
@@ -39,9 +45,8 @@ spring:
 
 oauth:
   github:
-    client-id: Ov23ctui8olAxrt6hQeX
-    client-secret: 66ebfa9ddbac39bc4e4aef6747a60c0a82d6a8b0
-#    redirect-uri: http://localhost:8085/oauth/callback/github
+    client-id: ${DEV_GITHUB_CLIENT_ID:Ov23ctui8olAxrt6hQeX}
+    client-secret: ${DEV_GITHUB_CLIENT_SECRET:66ebfa9ddbac39bc4e4aef6747a60c0a82d6a8b0}
     redirect-uri: http://localhost:5173/callback
     disable-ssl: true
 
