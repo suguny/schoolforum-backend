@@ -9,5 +9,12 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - SPRING_PROFILES_ACTIVE=prod
+      - JAVA_OPTS=-Xms256m -Xmx512m
     volumes:
       - /var/log/schoolforum:/var/log/schoolforum
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8085"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
