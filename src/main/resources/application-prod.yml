@@ -1,5 +1,5 @@
 server:
-  address: ${SERVER_ADDRESS}
+  address: ${SERVER_ADDRESS:0.0.0.0}
   port: 8085
 
 manticore:
