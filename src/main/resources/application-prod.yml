@@ -43,11 +43,14 @@ spring:
             enable: true
             required: true
 
+cors:
+  allowed-origins: https://sugeny.github.io
+
 oauth:
   github:
     client-id: ${GITHUB_CLIENT_ID:}
     client-secret: ${GITHUB_CLIENT_SECRET:}
-    redirect-uri: ${GITHUB_REDIRECT_URI:http://localhost:8085/oauth/callback/github}
+    redirect-uri: ${GITHUB_REDIRECT_URI:http://85.137.245.41:8085/oauth/callback/github}
 
 springdoc:
   swagger-ui:

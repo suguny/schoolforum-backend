@@ -42,6 +42,9 @@ spring:
             enable: true
             required: true
 
+cors:
+  allowed-origins: http://localhost:5173
+
 oauth:
   github:
     client-id: ${DEV_GITHUB_CLIENT_ID:Ov23ctui8olAxrt6hQeX}
