@@ -16,7 +16,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/search")
 @RequiredArgsConstructor
-@Tag(name = "搜索管理", description = "基于Elasticsearch的全文搜索接口")
+@Tag(name = "搜索管理", description = "基于Manticore Search的全文搜索接口")
 public class SearchController {
 
     private final SearchService searchService;

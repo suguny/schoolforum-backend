@@ -1,7 +1,5 @@
 package com.example.schoolforum.service.impl;
 
-import co.elastic.clients.elasticsearch._types.SortOrder;
-import co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType;
 import com.example.schoolforum.component.PostQueryHelper;
 import com.example.schoolforum.mapper.UsersMapper;
 import com.example.schoolforum.pojo.Posts;
@@ -14,23 +12,26 @@ import com.example.schoolforum.pojo.dto.KeywordSuggestion;
 import com.example.schoolforum.pojo.dto.PostSearchDocument;
 import com.example.schoolforum.pojo.dto.SearchResult;
 import com.example.schoolforum.pojo.dto.UserSearchDocument;
-import com.example.schoolforum.repository.PostSearchRepository;
-import com.example.schoolforum.repository.UserSearchRepository;
 import com.example.schoolforum.service.SearchService;
+import com.manticoresearch.client.ApiException;
+import com.manticoresearch.client.api.IndexApi;
+import com.manticoresearch.client.api.SearchApi;
+import com.manticoresearch.client.api.UtilsApi;
+import com.manticoresearch.client.model.DeleteDocumentRequest;
+import com.manticoresearch.client.model.InsertDocumentRequest;
+import com.manticoresearch.client.model.SearchRequest;
+import com.manticoresearch.client.model.SearchResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.elasticsearch.client.elc.NativeQuery;
-import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
-import org.springframework.data.elasticsearch.core.IndexOperations;
-import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -38,35 +39,51 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SearchServiceImpl implements SearchService {
 
-    private final PostSearchRepository postSearchRepository;
-    private final UserSearchRepository userSearchRepository;
-    private final ElasticsearchOperations elasticsearchOperations;
+    private final IndexApi indexApi;
+    private final SearchApi searchApi;
+    private final UtilsApi utilsApi;
     private final PostQueryHelper postQueryHelper;
     private final UsersMapper usersMapper;
 
     @Override
     public void deletePost(Long postId) {
-        postSearchRepository.deleteById(postId);
+        try {
+            DeleteDocumentRequest deleteRequest = new DeleteDocumentRequest();
+            deleteRequest.index(PostDocument.INDEX_NAME).setId(postId);
+            indexApi.delete(deleteRequest);
+        } catch (ApiException e) {
+            log.error("Failed to delete post {}: {}", postId, e.getMessage(), e);
+        }
     }
 
     @Override
     public void indexUser(UserSearchDocument document) {
-        UserDocument doc = UserDocument.builder()
-                .id(document.getId())
-                .username(document.getUsername())
-                .email(document.getEmail())
-                .avatarUrl(document.getAvatarUrl())
-                .bio(document.getBio())
-                .role(toRoleInt(document.getRole()))
-                .isActive(toActiveBool(document.getIsActive()))
-                .createdAt(parseTimestamp(document.getCreatedAt()))
-                .build();
-        userSearchRepository.save(doc);
+        try {
+            InsertDocumentRequest docRequest = new InsertDocumentRequest();
+            Map<String, Object> doc = new HashMap<>();
+            doc.put("username", document.getUsername());
+            doc.put("email", document.getEmail());
+            doc.put("avatar_url", document.getAvatarUrl());
+            doc.put("bio", document.getBio());
+            doc.put("role", toRoleInt(document.getRole()));
+            doc.put("is_active", toActiveBool(document.getIsActive()));
+            doc.put("created_at", parseTimestamp(document.getCreatedAt()));
+            docRequest.index(UserDocument.INDEX_NAME).id(document.getId()).setDoc(doc);
+            indexApi.replace(docRequest);
+        } catch (ApiException e) {
+            log.error("Failed to index user {}: {}", document.getId(), e.getMessage(), e);
+        }
     }
 
     @Override
     public void deleteUser(Long userId) {
-        userSearchRepository.deleteById(userId);
+        try {
+            DeleteDocumentRequest deleteRequest = new DeleteDocumentRequest();
+            deleteRequest.index(UserDocument.INDEX_NAME).setId(userId);
+            indexApi.delete(deleteRequest);
+        } catch (ApiException e) {
+            log.error("Failed to delete user {}: {}", userId, e.getMessage(), e);
+        }
     }
 
     @Override
@@ -83,24 +100,36 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public List<KeywordSuggestion> getKeywordSuggestions(String prefix, int limit) {
         try {
-            NativeQuery nativeQuery = NativeQuery.builder()
-                    .withQuery(q -> q
-                            .prefix(p -> p
-                                    .field("keyword")
-                                    .value(prefix)))
-                    .withSort(s -> s.field(f -> f.field("count").order(SortOrder.Desc)))
-                    .withMaxResults(limit)
-                    .build();
+            SearchRequest searchRequest = new SearchRequest();
+            searchRequest.setIndex(PopularQueryDocument.INDEX_NAME);
 
-            SearchHits<PopularQueryDocument> hits = elasticsearchOperations.search(nativeQuery, PopularQueryDocument.class);
+            Map<String, Object> matchQuery = new HashMap<>();
+            matchQuery.put("keyword", prefix + "*");
+            Map<String, Object> queryMap = new HashMap<>();
+            queryMap.put("match", matchQuery);
+            searchRequest.setQuery(queryMap);
 
-            return hits.getSearchHits().stream()
-                    .map(hit -> {
-                        PopularQueryDocument doc = hit.getContent();
+            searchRequest.setLimit(limit);
+            searchRequest.setSort(new ArrayList<>(List.of("count:desc")));
+
+            SearchResponse response = searchApi.search(searchRequest);
+            List<?> rawHits = response.getHits().getHits();
+
+            return rawHits.stream()
+                    .map(rawHit -> {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> hit = (Map<String, Object>) rawHit;
+                        Map<String, Object> source = hit.get("_source") instanceof Map
+                                ? (Map<String, Object>) hit.get("_source")
+                                : new HashMap<>();
+                        Object countObj = source.get("count");
+                        Long count = countObj instanceof Number ? ((Number) countObj).longValue() : 0L;
+                        Object scoreObj = hit.get("_score");
+                        Double score = scoreObj instanceof Number ? ((Number) scoreObj).doubleValue() : 0.0;
                         return KeywordSuggestion.builder()
-                                .keyword(doc.getKeyword())
-                                .count(doc.getCount())
-                                .score((double) hit.getScore())
+                                .keyword((String) source.get("keyword"))
+                                .count(count)
+                                .score(score)
                                 .build();
                     })
                     .collect(Collectors.toList());
@@ -113,17 +142,14 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public void syncAllPosts() {
         try {
-            IndexOperations indexOps = elasticsearchOperations.indexOps(PostDocument.class);
-            indexOps.delete();
-            indexOps.createWithMapping();
-            log.info("Created posts index with IK mapping");
+            createPostsIndex();
 
             List<Posts> posts = postQueryHelper.selectAllWithRelations();
-            List<PostDocument> documents = posts.stream()
-                    .map(PostDocument::fromEntity)
-                    .collect(Collectors.toList());
-            postSearchRepository.saveAll(documents);
-            log.info("Successfully synced {} posts to Elasticsearch", documents.size());
+            for (Posts post : posts) {
+                PostDocument doc = PostDocument.fromEntity(post);
+                insertPostDocument(doc);
+            }
+            log.info("Successfully synced {} posts to Manticore Search", posts.size());
         } catch (Exception e) {
             log.error("Failed to sync posts: {}", e.getMessage(), e);
             throw new RuntimeException("帖子索引同步失败: " + e.getMessage(), e);
@@ -133,17 +159,14 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public void syncAllUsers() {
         try {
-            IndexOperations indexOps = elasticsearchOperations.indexOps(UserDocument.class);
-            indexOps.delete();
-            indexOps.createWithMapping();
-            log.info("Created users index with IK mapping");
+            createUsersIndex();
 
             List<Users> users = usersMapper.selectAll();
-            List<UserDocument> documents = users.stream()
-                    .map(UserDocument::fromEntity)
-                    .collect(Collectors.toList());
-            userSearchRepository.saveAll(documents);
-            log.info("Successfully synced {} users to Elasticsearch", documents.size());
+            for (Users user : users) {
+                UserDocument doc = UserDocument.fromEntity(user);
+                insertUserDocument(doc);
+            }
+            log.info("Successfully synced {} users to Manticore Search", users.size());
         } catch (Exception e) {
             log.error("Failed to sync users: {}", e.getMessage(), e);
             throw new RuntimeException("用户索引同步失败: " + e.getMessage(), e);
@@ -155,68 +178,192 @@ public class SearchServiceImpl implements SearchService {
         Posts post = postQueryHelper.selectByIdWithRelations(postId);
         if (post != null) {
             PostDocument doc = PostDocument.fromEntity(post);
-            postSearchRepository.save(doc);
+            insertPostDocument(doc);
         }
     }
 
     @Override
     public void deleteAllIndexes() {
-        elasticsearchOperations.indexOps(PostDocument.class).delete();
-        elasticsearchOperations.indexOps(UserDocument.class).delete();
-        log.info("Deleted all search indexes");
+        try {
+            utilsApi.sql("DROP TABLE IF EXISTS " + PostDocument.INDEX_NAME, true);
+            utilsApi.sql("DROP TABLE IF EXISTS " + UserDocument.INDEX_NAME, true);
+            log.info("Deleted all search indexes");
+        } catch (ApiException e) {
+            log.error("Failed to delete indexes: {}", e.getMessage(), e);
+        }
     }
 
     @Override
     public long getPostsCollectionCount() {
-        return postSearchRepository.count();
+        try {
+            SearchRequest searchRequest = new SearchRequest();
+            searchRequest.setIndex(PostDocument.INDEX_NAME);
+            Map<String, Object> queryMap = new HashMap<>();
+            queryMap.put("match_all", null);
+            searchRequest.setQuery(queryMap);
+            searchRequest.setLimit(0);
+            SearchResponse response = searchApi.search(searchRequest);
+            return response.getHits().getTotal() != null ? response.getHits().getTotal() : 0L;
+        } catch (ApiException e) {
+            log.error("Failed to get posts count: {}", e.getMessage());
+            return 0L;
+        }
     }
 
     @Override
     public long getUsersCollectionCount() {
-        return userSearchRepository.count();
+        try {
+            SearchRequest searchRequest = new SearchRequest();
+            searchRequest.setIndex(UserDocument.INDEX_NAME);
+            Map<String, Object> queryMap = new HashMap<>();
+            queryMap.put("match_all", null);
+            searchRequest.setQuery(queryMap);
+            searchRequest.setLimit(0);
+            SearchResponse response = searchApi.search(searchRequest);
+            return response.getHits().getTotal() != null ? response.getHits().getTotal() : 0L;
+        } catch (ApiException e) {
+            log.error("Failed to get users count: {}", e.getMessage());
+            return 0L;
+        }
+    }
+
+    private void createPostsIndex() throws ApiException {
+        utilsApi.sql("DROP TABLE IF EXISTS " + PostDocument.INDEX_NAME, true);
+        utilsApi.sql(
+                "CREATE TABLE " + PostDocument.INDEX_NAME + " ("
+                        + "author_id BIGINT, "
+                        + "author_name TEXT, "
+                        + "author_avatar STRING, "
+                        + "title TEXT, "
+                        + "content TEXT, "
+                        + "category_id BIGINT, "
+                        + "category_name STRING, "
+                        + "parent_category_name STRING, "
+                        + "tags JSON, "
+                        + "like_count INTEGER, "
+                        + "view_count INTEGER, "
+                        + "comment_count INTEGER, "
+                        + "favorite_count INTEGER, "
+                        + "cover_image STRING, "
+                        + "is_pinned BOOLEAN, "
+                        + "is_essential BOOLEAN, "
+                        + "created_at BIGINT, "
+                        + "updated_at BIGINT"
+                        + ") charset_table = 'chinese' morphology = 'icu_chinese'",
+                true);
+        log.info("Created posts index with ICU Chinese morphology");
+    }
+
+    private void createUsersIndex() throws ApiException {
+        utilsApi.sql("DROP TABLE IF EXISTS " + UserDocument.INDEX_NAME, true);
+        utilsApi.sql(
+                "CREATE TABLE " + UserDocument.INDEX_NAME + " ("
+                        + "username TEXT, "
+                        + "email STRING, "
+                        + "avatar_url STRING, "
+                        + "bio TEXT, "
+                        + "role INTEGER, "
+                        + "is_active BOOLEAN, "
+                        + "created_at BIGINT"
+                        + ") charset_table = 'chinese' morphology = 'icu_chinese'",
+                true);
+        log.info("Created users index with ICU Chinese morphology");
+    }
+
+    private void insertPostDocument(PostDocument doc) {
+        try {
+            InsertDocumentRequest docRequest = new InsertDocumentRequest();
+            Map<String, Object> docMap = new HashMap<>();
+            docMap.put("author_id", doc.getAuthorId());
+            docMap.put("author_name", doc.getAuthorName());
+            docMap.put("author_avatar", doc.getAuthorAvatar());
+            docMap.put("title", doc.getTitle());
+            docMap.put("content", doc.getContent());
+            docMap.put("category_id", doc.getCategoryId());
+            docMap.put("category_name", doc.getCategoryName());
+            docMap.put("parent_category_name", doc.getParentCategoryName());
+            docMap.put("tags", doc.getTags());
+            docMap.put("like_count", doc.getLikeCount());
+            docMap.put("view_count", doc.getViewCount());
+            docMap.put("comment_count", doc.getCommentCount());
+            docMap.put("favorite_count", doc.getFavoriteCount());
+            docMap.put("cover_image", doc.getCoverImage());
+            docMap.put("is_pinned", doc.getIsPinned());
+            docMap.put("is_essential", doc.getIsEssential());
+            docMap.put("created_at", doc.getCreatedAt());
+            docMap.put("updated_at", doc.getUpdatedAt());
+            docRequest.index(PostDocument.INDEX_NAME).id(doc.getId()).setDoc(docMap);
+            indexApi.replace(docRequest);
+        } catch (ApiException e) {
+            log.error("Failed to insert post {}: {}", doc.getId(), e.getMessage(), e);
+        }
+    }
+
+    private void insertUserDocument(UserDocument doc) {
+        try {
+            InsertDocumentRequest docRequest = new InsertDocumentRequest();
+            Map<String, Object> docMap = new HashMap<>();
+            docMap.put("username", doc.getUsername());
+            docMap.put("email", doc.getEmail());
+            docMap.put("avatar_url", doc.getAvatarUrl());
+            docMap.put("bio", doc.getBio());
+            docMap.put("role", doc.getRole());
+            docMap.put("is_active", doc.getIsActive());
+            docMap.put("created_at", doc.getCreatedAt());
+            docRequest.index(UserDocument.INDEX_NAME).id(doc.getId()).setDoc(docMap);
+            indexApi.replace(docRequest);
+        } catch (ApiException e) {
+            log.error("Failed to insert user {}: {}", doc.getId(), e.getMessage(), e);
+        }
     }
 
     private SearchResult<PostSearchDocument> searchPostsInternal(String query, int page, int pageSize) {
         try {
-            NativeQuery nativeQuery = NativeQuery.builder()
-                    .withQuery(q -> q
-                            .multiMatch(mm -> mm
-                                    .query(query)
-                                    .fields("title", "content", "author_name")
-                                    .type(TextQueryType.BoolPrefix)))
-                    .withPageable(PageRequest.of(page - 1, pageSize))
-                    .build();
+            SearchRequest searchRequest = new SearchRequest();
+            searchRequest.setIndex(PostDocument.INDEX_NAME);
 
-            SearchHits<PostDocument> searchHits = elasticsearchOperations.search(nativeQuery, PostDocument.class);
+            Map<String, Object> matchQuery = new HashMap<>();
+            matchQuery.put("title,content,author_name", query);
+            Map<String, Object> queryMap = new HashMap<>();
+            queryMap.put("match", matchQuery);
+            searchRequest.setQuery(queryMap);
 
-            List<PostSearchDocument> hits = searchHits.getSearchHits().stream()
-                    .map(hit -> {
-                        PostDocument doc = hit.getContent();
+            searchRequest.setLimit(pageSize);
+            searchRequest.setOffset((page - 1) * pageSize);
+
+            SearchResponse response = searchApi.search(searchRequest);
+            Long totalHits = response.getHits().getTotal() != null ? response.getHits().getTotal() : 0L;
+
+            List<PostSearchDocument> hits = response.getHits().getHits().stream()
+                    .map(rawHit -> {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> hit = (Map<String, Object>) rawHit;
+                        Map<String, Object> source = hit.get("_source") instanceof Map
+                                ? (Map<String, Object>) hit.get("_source")
+                                : new HashMap<>();
                         return PostSearchDocument.builder()
-                                .id(doc.getId())
-                                .authorId(doc.getAuthorId())
-                                .authorName(doc.getAuthorName())
-                                .authorAvatar(doc.getAuthorAvatar())
-                                .title(doc.getTitle())
-                                .content(doc.getContent())
-                                .coverImage(doc.getCoverImage())
-                                .categoryId(doc.getCategoryId())
-                                .categoryName(doc.getCategoryName())
-                                .parentCategoryName(doc.getParentCategoryName())
-                                .tagNames(doc.getTags())
-                                .likeCount(doc.getLikeCount())
-                                .commentCount(doc.getCommentCount())
-                                .favoriteCount(doc.getFavoriteCount())
-                                .viewCount(doc.getViewCount())
-                                .isPinned(doc.getIsPinned() != null && doc.getIsPinned() ? "PINNED" : "NOT_PINNED")
-                                .isEssential(doc.getIsEssential() != null && doc.getIsEssential() ? "ESSENTIAL" : "NOT_ESSENTIAL")
-                                .createdAt(formatTimestamp(doc.getCreatedAt()))
-                                .updatedAt(formatTimestamp(doc.getUpdatedAt()))
+                                .id(toLong(hit.get("_id")))
+                                .authorId(toLong(source.get("author_id")))
+                                .authorName((String) source.get("author_name"))
+                                .authorAvatar((String) source.get("author_avatar"))
+                                .title((String) source.get("title"))
+                                .content((String) source.get("content"))
+                                .coverImage((String) source.get("cover_image"))
+                                .categoryId(toLong(source.get("category_id")))
+                                .categoryName((String) source.get("category_name"))
+                                .parentCategoryName((String) source.get("parent_category_name"))
+                                .tagNames(toStringList(source.get("tags")))
+                                .likeCount(toInteger(source.get("like_count")))
+                                .commentCount(toInteger(source.get("comment_count")))
+                                .favoriteCount(toInteger(source.get("favorite_count")))
+                                .viewCount(toInteger(source.get("view_count")))
+                                .isPinned(toBoolean(source.get("is_pinned")) ? "PINNED" : "NOT_PINNED")
+                                .isEssential(toBoolean(source.get("is_essential")) ? "ESSENTIAL" : "NOT_ESSENTIAL")
+                                .createdAt(formatTimestamp(toLong(source.get("created_at"))))
+                                .updatedAt(formatTimestamp(toLong(source.get("updated_at"))))
                                 .build();
                     })
                     .collect(Collectors.toList());
-
-            long totalHits = searchHits.getTotalHits();
 
             return SearchResult.<PostSearchDocument>builder()
                     .query(query)
@@ -234,33 +381,39 @@ public class SearchServiceImpl implements SearchService {
 
     private SearchResult<UserSearchDocument> searchUsersInternal(String query, int page, int pageSize) {
         try {
-            NativeQuery nativeQuery = NativeQuery.builder()
-                    .withQuery(q -> q
-                            .multiMatch(mm -> mm
-                                    .query(query)
-                                    .fields("username", "email", "bio")
-                                    .type(TextQueryType.BoolPrefix)))
-                    .withPageable(PageRequest.of(page - 1, pageSize))
-                    .build();
+            SearchRequest searchRequest = new SearchRequest();
+            searchRequest.setIndex(UserDocument.INDEX_NAME);
 
-            SearchHits<UserDocument> searchHits = elasticsearchOperations.search(nativeQuery, UserDocument.class);
+            Map<String, Object> matchQuery = new HashMap<>();
+            matchQuery.put("username,email,bio", query);
+            Map<String, Object> queryMap = new HashMap<>();
+            queryMap.put("match", matchQuery);
+            searchRequest.setQuery(queryMap);
 
-            List<UserSearchDocument> hits = searchHits.getSearchHits().stream()
-                    .map(hit -> {
-                        UserDocument doc = hit.getContent();
+            searchRequest.setLimit(pageSize);
+            searchRequest.setOffset((page - 1) * pageSize);
+
+            SearchResponse response = searchApi.search(searchRequest);
+            Long totalHits = response.getHits().getTotal() != null ? response.getHits().getTotal() : 0L;
+
+            List<UserSearchDocument> hits = response.getHits().getHits().stream()
+                    .map(rawHit -> {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> hit = (Map<String, Object>) rawHit;
+                        Map<String, Object> source = hit.get("_source") instanceof Map
+                                ? (Map<String, Object>) hit.get("_source")
+                                : new HashMap<>();
                         return UserSearchDocument.builder()
-                                .id(doc.getId())
-                                .username(doc.getUsername())
-                                .email(doc.getEmail())
-                                .avatarUrl(doc.getAvatarUrl())
-                                .bio(doc.getBio())
-                                .role(toRoleString(doc.getRole()))
-                                .isActive(doc.getIsActive() != null && doc.getIsActive() ? 1 : 0)
+                                .id(toLong(hit.get("_id")))
+                                .username((String) source.get("username"))
+                                .email((String) source.get("email"))
+                                .avatarUrl((String) source.get("avatar_url"))
+                                .bio((String) source.get("bio"))
+                                .role(toRoleString(toInteger(source.get("role"))))
+                                .isActive(toBoolean(source.get("is_active")) ? 1 : 0)
                                 .build();
                     })
                     .collect(Collectors.toList());
-
-            long totalHits = searchHits.getTotalHits();
 
             return SearchResult.<UserSearchDocument>builder()
                     .query(query)
@@ -313,5 +466,39 @@ public class SearchServiceImpl implements SearchService {
                 .atZone(ZoneId.systemDefault())
                 .toLocalDateTime()
                 .format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+    }
+
+    private Long toLong(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number) return ((Number) value).longValue();
+        try {
+            return Long.parseLong(value.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Integer toInteger(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number) return ((Number) value).intValue();
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Boolean toBoolean(Object value) {
+        if (value == null) return false;
+        if (value instanceof Boolean) return (Boolean) value;
+        if (value instanceof Number) return ((Number) value).intValue() != 0;
+        return Boolean.parseBoolean(value.toString());
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> toStringList(Object value) {
+        if (value == null) return null;
+        if (value instanceof List) return (List<String>) value;
+        return new ArrayList<>();
     }
 }

@@ -130,10 +130,11 @@
             <artifactId>JustAuth</artifactId>
             <version>1.16.7</version>
         </dependency>
-        <!-- Elasticsearch -->
+        <!-- Manticore Search -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-elasticsearch</artifactId>
+            <groupId>com.manticoresearch</groupId>
+            <artifactId>manticoresearch</artifactId>
+            <version>5.0.0</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
