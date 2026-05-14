@@ -133,14 +133,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy docker-compose and nginx config to server
+      - name: Copy docker-compose and ssl script to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DOCKER_HOST }}
           username: ${{ secrets.DOCKER_USER }}
           key: ${{ secrets.DOCKER_SSH_KEY }}
           port: ${{ secrets.DOCKER_PORT || 22 }}
-          source: docker-compose.yml,nginx/
+          source: docker-compose.yml,ssl/
           target: /opt/schoolforum/
           overwrite: true
 
@@ -156,6 +156,10 @@ jobs:
             set -e
             cd /opt/schoolforum
 
+            echo "=== Generating keystore from certs ==="
+            chmod +x ssl/generate-keystore.sh
+            ./ssl/generate-keystore.sh
+
             echo "=== Stopping old containers ==="
             docker compose down --remove-orphans --timeout 10 2>/dev/null || true
             docker rm -f schoolforum schoolforum-nginx schoolforum-certbot 2>/dev/null || true
@@ -165,7 +169,6 @@ jobs:
 
             echo "=== Pulling images ==="
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            docker pull nginx:alpine
 
             echo "=== Starting services ==="
             docker compose up -d
