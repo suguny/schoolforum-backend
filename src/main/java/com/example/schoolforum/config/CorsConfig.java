@@ -22,7 +22,7 @@ public class CorsConfig {
     @Value("${cors.allowed-origins:http://localhost:5173,http://localhost:8080}")
     private String allowedOrigins;
 
-    @Value("${cors.allowed-headers:Content-Type, Authorization, X-Requested-With, Accept, Origin, Token}")
+    @Value("${cors.allowed-headers:Content-Type, Authorization, X-Requested-With, Accept, Origin, Token, cache-control}")
     private String allowedHeaders;
 
     @Value("${cors.allow-credentials:true}")
