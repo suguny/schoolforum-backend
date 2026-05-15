@@ -136,16 +136,17 @@
                 </exclusion>
             </exclusions>
         </dependency>
-        <!-- fastjson2（兼容 Spring Boot 3.x Jakarta EE，同时提供 fastjson 1.x 兼容 API 给 JustAuth） -->
+        <!-- fastjson2 -->
         <dependency>
             <groupId>com.alibaba.fastjson2</groupId>
             <artifactId>fastjson2</artifactId>
-            <version>2.0.53</version>
+            <version>2.0.58</version>
         </dependency>
+        <!-- fastjson 1.x 兼容模块（提供 com.alibaba.fastjson.JSONObject 给 JustAuth 使用） -->
         <dependency>
-            <groupId>com.alibaba.fastjson2</groupId>
-            <artifactId>fastjson2-extension</artifactId>
-            <version>2.0.53</version>
+            <groupId>com.alibaba</groupId>
+            <artifactId>fastjson</artifactId>
+            <version>2.0.58</version>
         </dependency>
         <!-- Manticore Search -->
         <dependency>
